@@ -73,6 +73,9 @@ type IngestAccepted struct {
 	// Accepted Events accepted for processing (after dedupe).
 	Accepted int64 `json:"accepted"`
 
+	// Dropped Events of the batch that were not accepted because they are invalid and cannot be normalized; the rest of the batch is accepted. Omitted when none.
+	Dropped *int64 `json:"dropped,omitempty"`
+
 	// Quota Live-mode keys: the org's plan quota state. Informational; events are always accepted.
 	Quota *IngestAcceptedQuota `json:"quota,omitempty"`
 }
@@ -107,16 +110,16 @@ type ServerEvent struct {
 
 // ServerEventGoal defines model for ServerEventGoal.
 type ServerEventGoal struct {
-	// Currency ISO 4217 currency code of value.
+	// Currency ISO 4217 currency code of value (three letters; lowercase is accepted and upper-cased). An event whose goal currency is not three letters is dropped.
 	Currency string `json:"currency"`
 
-	// Id goal_id, as passed to kalathos.goal(); matched by goals with an event or server matcher.
+	// Id goal_id, as passed to kalathos.goal(); matched by goals with an event or server matcher. Control characters are removed and the result is cut to 64 characters.
 	Id *string `json:"id,omitempty"`
 
-	// Name Server goal name, matched by goals with a server matcher. Used as goal_id when id is absent.
+	// Name Server goal name, matched by goals with a server matcher. Used as goal_id when id is absent. Control characters are removed and the result is cut to 64 characters.
 	Name *string `json:"name,omitempty"`
 
-	// Value Monetary value (e.g. the order total).
+	// Value Monetary value (e.g. the order total), from 0 to 1000000000000. An event whose goal value is outside that range is dropped.
 	Value float64 `json:"value"`
 }
 

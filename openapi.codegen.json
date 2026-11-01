@@ -79,6 +79,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "dropped": {
+            "description": "Events of the batch that were not accepted because they are invalid and cannot be normalized; the rest of the batch is accepted. Omitted when none.",
+            "format": "int64",
+            "type": "integer"
+          },
           "quota": {
             "description": "Live-mode keys: the org's plan quota state. Informational; events are always accepted.",
             "enum": [
@@ -169,27 +174,20 @@
         "additionalProperties": false,
         "properties": {
           "currency": {
-            "description": "ISO 4217 currency code of value.",
-            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 currency code of value (three letters; lowercase is accepted and upper-cased). An event whose goal currency is not three letters is dropped.",
             "type": "string"
           },
           "id": {
-            "description": "goal_id, as passed to kalathos.goal(); matched by goals with an event or server matcher.",
-            "maxLength": 64,
-            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "description": "goal_id, as passed to kalathos.goal(); matched by goals with an event or server matcher. Control characters are removed and the result is cut to 64 characters.",
             "type": "string"
           },
           "name": {
-            "description": "Server goal name, matched by goals with a server matcher. Used as goal_id when id is absent.",
-            "maxLength": 64,
-            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "description": "Server goal name, matched by goals with a server matcher. Used as goal_id when id is absent. Control characters are removed and the result is cut to 64 characters.",
             "type": "string"
           },
           "value": {
-            "description": "Monetary value (e.g. the order total).",
+            "description": "Monetary value (e.g. the order total), from 0 to 1000000000000. An event whose goal value is outside that range is dropped.",
             "format": "double",
-            "maximum": 1000000000000,
-            "minimum": 0,
             "type": "number"
           }
         },
@@ -282,7 +280,7 @@
   "paths": {
     "/v1/ingest/server-events": {
       "post": {
-        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is trusted for detection. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`.",
+        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is trusted for detection. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted.",
         "operationId": "ingest-server-events",
         "parameters": [
           {
