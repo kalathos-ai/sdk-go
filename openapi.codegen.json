@@ -1,0 +1,556 @@
+{
+  "components": {
+    "schemas": {
+      "APIError": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/APIErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "APIErrorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "description": "Every problem found, for validation errors.",
+            "items": {
+              "$ref": "#/components/schemas/APIErrorDetail"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "message": {
+            "type": "string"
+          },
+          "param": {
+            "description": "The request field the error is about, when there is one.",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Quote this id to support; it is also in the X-Request-Id header.",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "authentication_error",
+              "permission_error",
+              "invalid_request_error",
+              "api_error"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "APIErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "description": "Where the problem is, e.g. body.email or query.limit.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "IngestAccepted": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "description": "Events accepted for processing (after dedupe).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "quota": {
+            "description": "Live-mode keys: the org's plan quota state. Informational; events are always accepted.",
+            "enum": [
+              "ok",
+              "warning",
+              "grace",
+              "exceeded",
+              "overage"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "ResolvedSeed": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "type": "string"
+          },
+          "jsonld": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "seed_id": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "seed_id",
+          "variant",
+          "html",
+          "jsonld"
+        ],
+        "type": "object"
+      },
+      "ServerEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "field_id": {
+            "description": "Field the request belongs to; must be in the key's org (and equal the key's field for field-bound keys).",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "goal": {
+            "$ref": "#/components/schemas/ServerEventGoal",
+            "description": "A goal this request completed (e.g. an order). Recorded on the session like a kalathos.goal() call, once per event id."
+          },
+          "id": {
+            "description": "Client-generated unique id (ULID recommended); replays within the dedupe window are dropped.",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ServerEventRequest"
+          },
+          "session_hint": {
+            "description": "Session id to join (e.g. the kalathos.js session id). When absent the session id is derived from org, field, request.ip, request.user_agent and a 30-minute bucket of ts.",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]*$",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Request start, ms since epoch.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "field_id",
+          "request"
+        ],
+        "type": "object"
+      },
+      "ServerEventGoal": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "description": "ISO 4217 currency code of value.",
+            "pattern": "^[A-Z]{3}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "goal_id, as passed to kalathos.goal(); matched by goals with an event or server matcher.",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          "name": {
+            "description": "Server goal name, matched by goals with a server matcher. Used as goal_id when id is absent.",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          "value": {
+            "description": "Monetary value (e.g. the order total).",
+            "format": "double",
+            "maximum": 1000000000000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "ServerEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Request headers. Only an allow-list is kept (Signature*, From, X-Agent, Accept, Accept-Language, Referer, Sec-CH-UA*, Sec-Fetch-*, Cloudflare/HUMAN bot verdicts); at most 32, values over 2048 bytes are dropped. A request with Signature and Signature-Input also keeps up to 16 headers its Web Bot Auth signature covers (never Cookie, Authorization or X-Kalathos-*).",
+            "type": "object"
+          },
+          "ip": {
+            "description": "Client address as resolved by the trusted server SDK; used for detection (IP-range verification).",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "method": {
+            "maxLength": 16,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "description": "Response status. Omit it when unknown (e.g. a middleware that passed the request on, or a response that never completed); 0 means the same.",
+            "format": "int64",
+            "maximum": 599,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target_uri": {
+            "description": "Absolute request URL exactly as received (scheme://host/path?query), sent only for requests carrying a Web Bot Auth signature. Used to verify the signed @authority, @path and @query components; it is not stored on events. When absent, an absolute url is used.",
+            "maxLength": 2048,
+            "type": "string"
+          },
+          "url": {
+            "description": "Absolute URL or path. Strip query strings that may carry personal data.",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "user_agent": {
+            "maxLength": 1024,
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "url",
+          "duration_ms"
+        ],
+        "type": "object"
+      },
+      "ServerEventsBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ServerEvent"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "kalathos SDK API subset",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/v1/ingest/server-events": {
+      "post": {
+        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is trusted for detection. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`.",
+        "operationId": "ingest-server-events",
+        "parameters": [
+          {
+            "description": "Bearer kl_sk_…",
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "description": "Bearer kl_sk_…",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerEventsBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestAccepted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "secretKey": []
+          }
+        ],
+        "summary": "Ingest server-side request events",
+        "tags": [
+          "Ingest"
+        ]
+      }
+    },
+    "/v1/seeds/resolve": {
+      "get": {
+        "description": "Called by kalathos.js with the publishable key; origin-checked. Returns 204 when there is nothing to mount (no goal reached yet, or the session is in a running experiment's holdout arm). Serves the published Harvest Seed for the goal and archetype, with a variant that is sticky per session (or set by the session's experiment arm); without a published seed, a static Harvest Seed template.",
+        "operationId": "seeds-resolve",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "field",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "goal",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "archetype",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "session",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Publishable key (kl_pk_…).",
+            "explode": false,
+            "in": "query",
+            "name": "key",
+            "schema": {
+              "description": "Publishable key (kl_pk_…).",
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent by the browser; must be one of the key's allowed origins.",
+            "in": "header",
+            "name": "Origin",
+            "schema": {
+              "description": "Sent by the browser; must be one of the key's allowed origins.",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedSeed"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Vary": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Resolve the seed to mount for a session",
+        "tags": [
+          "Seeds"
+        ]
+      }
+    }
+  }
+}
