@@ -412,11 +412,24 @@
             }
           },
           {
+            "description": "Goal id the page passed to kalathos.goal(...). Matches seeds published for that id and for the field's goals it names (by id, event or server matcher, or name).",
             "explode": false,
             "in": "query",
             "name": "goal",
             "schema": {
+              "description": "Goal id the page passed to kalathos.goal(...). Matches seeds published for that id and for the field's goals it names (by id, event or server matcher, or name).",
               "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Path of the page. Seeds of the field's URL-matcher goals that match it are resolved too, so a goal reached by URL mounts its seed without a kalathos.goal call.",
+            "explode": false,
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "description": "Path of the page. Seeds of the field's URL-matcher goals that match it are resolved too, so a goal reached by URL mounts its seed without a kalathos.goal call.",
+              "maxLength": 2048,
               "type": "string"
             }
           },

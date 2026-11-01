@@ -188,8 +188,13 @@ type IngestServerEventsParams struct {
 
 // SeedsResolveParams defines parameters for SeedsResolve.
 type SeedsResolveParams struct {
-	Field     string  `form:"field" json:"field"`
-	Goal      *string `form:"goal,omitempty" json:"goal,omitempty"`
+	Field string `form:"field" json:"field"`
+
+	// Goal Goal id the page passed to kalathos.goal(...). Matches seeds published for that id and for the field's goals it names (by id, event or server matcher, or name).
+	Goal *string `form:"goal,omitempty" json:"goal,omitempty"`
+
+	// Path Path of the page. Seeds of the field's URL-matcher goals that match it are resolved too, so a goal reached by URL mounts its seed without a kalathos.goal call.
+	Path      *string `form:"path,omitempty" json:"path,omitempty"`
 	Archetype *string `form:"archetype,omitempty" json:"archetype,omitempty"`
 	Session   *string `form:"session,omitempty" json:"session,omitempty"`
 
@@ -452,6 +457,18 @@ func NewSeedsResolveRequest(server string, params *SeedsResolveParams) (*http.Re
 		if params.Goal != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "goal", *params.Goal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", *params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
