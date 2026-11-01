@@ -280,7 +280,7 @@
   "paths": {
     "/v1/ingest/server-events": {
       "post": {
-        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is trusted for detection. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted.",
+        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted.",
         "operationId": "ingest-server-events",
         "parameters": [
           {
