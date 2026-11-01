@@ -47,6 +47,9 @@ _ = closeKalathos(shutdownCtx)    // then flush queued events (bounded by the co
 
 ## Fetcher Seeds
 
+Fetcher Seeds are part of the Scale and Enterprise plans. On other plans the resolver answers 402 and
+nothing is rendered (request reporting works on every plan).
+
 ```go
 seeds, err := kalathos.NewFetcherSeeds(kalathos.FetcherSeedsConfig{
     PublishableKey: os.Getenv("KALATHOS_PUBLISHABLE_KEY"),
