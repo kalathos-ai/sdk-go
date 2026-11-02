@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -44,10 +43,13 @@ type SeedRoute struct {
 
 // FetcherSeedsConfig configures server-side seed rendering.
 type FetcherSeedsConfig struct {
-	PublishableKey string
-	FieldID        string
-	Origin         string
-	Endpoint       string
+	// SecretKey is a secret key with seeds:read (kl_sk_live_… or kl_sk_test_…); keep it on the
+	// server. Fetcher Seeds need the Scale plan. Publishable keys only resolve seeds in the
+	// browser (kalathos.js).
+	SecretKey string
+	// FieldID is the field (site) the pages belong to; a field-bound key must belong to it.
+	FieldID  string
+	Endpoint string
 
 	Routes         []SeedRoute
 	TimeoutMs      int
@@ -71,7 +73,6 @@ type ResolvedSeed struct {
 type FetcherSeeds struct {
 	cfg    FetcherSeedsConfig
 	api    *apiclient.Client
-	origin string
 	routes []SeedRoute
 
 	timeout      time.Duration
@@ -124,20 +125,15 @@ func PathArchetype(path string) string {
 
 // NewFetcherSeeds builds a Fetcher Seeds helper.
 func NewFetcherSeeds(cfg FetcherSeedsConfig) (*FetcherSeeds, error) {
-	if !strings.HasPrefix(cfg.PublishableKey, "kl_pk_live_") && !strings.HasPrefix(cfg.PublishableKey, "kl_pk_test_") {
-		return nil, errors.New("kalathos: PublishableKey must start with kl_pk_live_ or kl_pk_test_")
+	if !strings.HasPrefix(cfg.SecretKey, "kl_sk_live_") && !strings.HasPrefix(cfg.SecretKey, "kl_sk_test_") {
+		return nil, errors.New("kalathos: SecretKey must start with kl_sk_live_ or kl_sk_test_; publishable keys only resolve seeds in the browser")
 	}
 	if cfg.FieldID == "" {
 		return nil, errors.New("kalathos: FieldID is required")
 	}
-	u, err := url.Parse(cfg.Origin)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, errors.New("kalathos: Origin must be the site's origin, e.g. https://shop.example")
-	}
-	origin := u.Scheme + "://" + u.Host
 	base := strings.TrimRight(cfg.Endpoint, "/")
 	if base == "" {
-		base = EndpointForKey(cfg.PublishableKey)
+		base = EndpointForKey(cfg.SecretKey)
 	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
@@ -171,7 +167,6 @@ func NewFetcherSeeds(cfg FetcherSeedsConfig) (*FetcherSeeds, error) {
 	return &FetcherSeeds{
 		cfg:          cfg,
 		api:          api,
-		origin:       origin,
 		routes:       cfg.Routes,
 		timeout:      time.Duration(timeoutMs) * time.Millisecond,
 		fetchTimeout: time.Duration(fetchMs) * time.Millisecond,
@@ -321,15 +316,15 @@ func (f *FetcherSeeds) storeLocked(key string, e seedEntry) {
 func (f *FetcherSeeds) fetchSeed(ctx context.Context, goal, archetype string) (seedEntry, error) {
 	ctx, cancel := context.WithTimeout(ctx, f.fetchTimeout)
 	defer cancel()
-	key := f.cfg.PublishableKey
-	params := apiclient.SeedsResolveParams{
+	params := apiclient.SeedsServerResolveParams{
 		Field:     f.cfg.FieldID,
 		Goal:      &goal,
 		Archetype: &archetype,
-		Key:       &key,
-		Origin:    &f.origin,
 	}
-	res, err := f.api.SeedsResolve(ctx, &params)
+	res, err := f.api.SeedsServerResolve(ctx, &params, func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", "Bearer "+f.cfg.SecretKey)
+		return nil
+	})
 	if err != nil {
 		return seedEntry{}, err
 	}
@@ -349,7 +344,7 @@ func (f *FetcherSeeds) fetchSeed(ctx context.Context, goal, archetype string) (s
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, res.Body)
-		return seedEntry{}, fmt.Errorf("kalathos: seeds/resolve responded %s", res.Status)
+		return seedEntry{}, fmt.Errorf("kalathos: seeds/server-resolve responded %s", res.Status)
 	}
 	var body apiclient.ResolvedSeed
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {

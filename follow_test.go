@@ -191,7 +191,7 @@ func TestSeedResolve402IsNoSeed(t *testing.T) {
 	}
 	var e errs
 	s, err := kalathos.NewFetcherSeeds(kalathos.FetcherSeedsConfig{
-		PublishableKey: "kl_pk_test_x", FieldID: "fld_t", Origin: "https://shop.example", Endpoint: srv.URL,
+		SecretKey: "kl_sk_test_x", FieldID: "fld_t", Endpoint: srv.URL,
 		Routes: []kalathos.SeedRoute{{Match: "/products/*", Goal: "purchase"}}, CacheTTLMs: 150, OnError: e.add,
 	})
 	if err != nil {

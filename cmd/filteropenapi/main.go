@@ -12,7 +12,7 @@ import (
 
 var keepPaths = []string{
 	"/v1/ingest/server-events",
-	"/v1/seeds/resolve",
+	"/v1/seeds/server-resolve",
 }
 
 func main() {

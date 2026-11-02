@@ -47,14 +47,15 @@ _ = closeKalathos(shutdownCtx)    // then flush queued events (bounded by the co
 
 ## Fetcher Seeds
 
-Fetcher Seeds are part of the Scale and Enterprise plans. On other plans the resolver answers 402 and
-nothing is rendered (request reporting works on every plan).
+Fetcher Seeds are part of the Scale and Enterprise plans and take a **secret key** (`kl_sk_…` with
+`seeds:read`), which stays on your server. On other plans the resolver answers 402 and nothing is
+rendered (request reporting works on every plan). Publishable keys (`kl_pk_…`) only resolve seeds in
+the browser, through kalathos.js.
 
 ```go
 seeds, err := kalathos.NewFetcherSeeds(kalathos.FetcherSeedsConfig{
-    PublishableKey: os.Getenv("KALATHOS_PUBLISHABLE_KEY"),
-    FieldID:        "fld_…",
-    Origin:         "https://shop.example",
+    SecretKey: os.Getenv("KALATHOS_SECRET_KEY"),
+    FieldID:   "fld_…",
     Routes: []kalathos.SeedRoute{
         {Match: "/products/*", Goal: "purchase"},
     },

@@ -103,14 +103,14 @@ type IngestAccepted struct {
 	// Accepted Events accepted for processing (after dedupe).
 	Accepted int64 `json:"accepted"`
 
-	// Dropped Events of the batch that were not accepted because they are invalid and cannot be normalized, or (server events) belong to a field a downgrade paused; the rest of the batch is accepted. Omitted when none.
+	// Dropped Events of the batch that were not accepted because they are invalid and cannot be normalized, or (server events) belong to a field a downgrade paused or arrive once a Free org's sessions for the period are used up; the rest of the batch is accepted. Omitted when none.
 	Dropped *int64 `json:"dropped,omitempty"`
 
-	// Quota Live-mode keys: the org's plan quota state. Informational; events are always accepted.
+	// Quota Live-mode keys: the org's plan quota state. exceeded on the Free plan means its hard cap is reached and new events are not recorded.
 	Quota *IngestAcceptedQuota `json:"quota,omitempty"`
 }
 
-// IngestAcceptedQuota Live-mode keys: the org's plan quota state. Informational; events are always accepted.
+// IngestAcceptedQuota Live-mode keys: the org's plan quota state. exceeded on the Free plan means its hard cap is reached and new events are not recorded.
 type IngestAcceptedQuota string
 
 // ResolvedSeed defines model for ResolvedSeed.
@@ -186,23 +186,16 @@ type IngestServerEventsParams struct {
 	Authorization *string `json:"Authorization,omitempty"`
 }
 
-// SeedsResolveParams defines parameters for SeedsResolve.
-type SeedsResolveParams struct {
+// SeedsServerResolveParams defines parameters for SeedsServerResolve.
+type SeedsServerResolveParams struct {
 	Field string `form:"field" json:"field"`
 
-	// Goal Goal id the page passed to kalathos.goal(...). Matches seeds published for that id and for the field's goals it names (by id, event or server matcher, or name).
+	// Goal Goal id of the page being rendered; matched like the goal of GET /v1/seeds/resolve.
 	Goal *string `form:"goal,omitempty" json:"goal,omitempty"`
 
-	// Path Path of the page. Seeds of the field's URL-matcher goals that match it are resolved too, so a goal reached by URL mounts its seed without a kalathos.goal call.
+	// Path Path of the page being rendered; seeds of the field's URL-matcher goals that match it are resolved too.
 	Path      *string `form:"path,omitempty" json:"path,omitempty"`
 	Archetype *string `form:"archetype,omitempty" json:"archetype,omitempty"`
-	Session   *string `form:"session,omitempty" json:"session,omitempty"`
-
-	// Key Publishable key (kl_pk_…).
-	Key *string `form:"key,omitempty" json:"key,omitempty"`
-
-	// Origin Sent by the browser; must be one of the key's allowed origins.
-	Origin *string `json:"Origin,omitempty"`
 }
 
 // IngestServerEventsJSONRequestBody defines body for IngestServerEvents for application/json ContentType.
@@ -284,7 +277,7 @@ type ClientInterface interface {
 
 	// IngestServerEventsWithBody Ingest server-side request events
 	//
-	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -293,24 +286,24 @@ type ClientInterface interface {
 
 	// IngestServerEvents Ingest server-side request events
 	//
-	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /v1/ingest/server-events (the `IngestServerEvents` operationId).
 	IngestServerEvents(ctx context.Context, params *IngestServerEventsParams, body IngestServerEventsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// SeedsResolve Resolve the seed to mount for a session
+	// SeedsServerResolve Resolve the seed to render server-side (Fetcher Seeds)
 	//
-	// Called by kalathos.js, and by the server SDKs for Fetcher Seeds, with the publishable key; origin-checked. Serves the published Harvest Seed for the goal and archetype, with a variant that is sticky per session (or set by the session's experiment arm). Returns 204 when there is nothing to mount: no goal reached yet, nothing published for it, or the session is in a running experiment's holdout arm. 402 `plan_required` with feature `seeds_publish` on the Free plan (seeds are preview only); without `session` (Fetcher Seeds) 402 with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused.
+	// Called by the server SDKs (Fetcher Seeds) with a secret key holding `seeds:read`; never from a browser. Serves the same published Harvest Seed kalathos.js would mount for the goal and archetype, chosen by page only, so the variant is the same for every visitor of the page. Returns 204 when there is nothing to render. 402 `plan_required` with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused. A field-bound key may only resolve its own field.
 	//
-	// Corresponds with GET /v1/seeds/resolve (the `SeedsResolve` operationId).
-	SeedsResolve(ctx context.Context, params *SeedsResolveParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with GET /v1/seeds/server-resolve (the `SeedsServerResolve` operationId).
+	SeedsServerResolve(ctx context.Context, params *SeedsServerResolveParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // IngestServerEventsWithBody Ingest server-side request events
 //
-// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 //
 // Takes any type of body and a specified content type.
 //
@@ -329,7 +322,7 @@ func (c *Client) IngestServerEventsWithBody(ctx context.Context, params *IngestS
 
 // IngestServerEvents Ingest server-side request events
 //
-// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -346,13 +339,13 @@ func (c *Client) IngestServerEvents(ctx context.Context, params *IngestServerEve
 	return c.Client.Do(req)
 }
 
-// SeedsResolve Resolve the seed to mount for a session
+// SeedsServerResolve Resolve the seed to render server-side (Fetcher Seeds)
 //
-// Called by kalathos.js, and by the server SDKs for Fetcher Seeds, with the publishable key; origin-checked. Serves the published Harvest Seed for the goal and archetype, with a variant that is sticky per session (or set by the session's experiment arm). Returns 204 when there is nothing to mount: no goal reached yet, nothing published for it, or the session is in a running experiment's holdout arm. 402 `plan_required` with feature `seeds_publish` on the Free plan (seeds are preview only); without `session` (Fetcher Seeds) 402 with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused.
+// Called by the server SDKs (Fetcher Seeds) with a secret key holding `seeds:read`; never from a browser. Serves the same published Harvest Seed kalathos.js would mount for the goal and archetype, chosen by page only, so the variant is the same for every visitor of the page. Returns 204 when there is nothing to render. 402 `plan_required` with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused. A field-bound key may only resolve its own field.
 //
-// Corresponds with GET /v1/seeds/resolve (the `SeedsResolve` operationId).
-func (c *Client) SeedsResolve(ctx context.Context, params *SeedsResolveParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSeedsResolveRequest(c.Server, params)
+// Corresponds with GET /v1/seeds/server-resolve (the `SeedsServerResolve` operationId).
+func (c *Client) SeedsServerResolve(ctx context.Context, params *SeedsServerResolveParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSeedsServerResolveRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -418,8 +411,8 @@ func NewIngestServerEventsRequestWithBody(server string, params *IngestServerEve
 	return req, nil
 }
 
-// NewSeedsResolveRequest constructs an http.Request for the SeedsResolve method
-func NewSeedsResolveRequest(server string, params *SeedsResolveParams) (*http.Request, error) {
+// NewSeedsServerResolveRequest constructs an http.Request for the SeedsServerResolve method
+func NewSeedsServerResolveRequest(server string, params *SeedsServerResolveParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -427,7 +420,7 @@ func NewSeedsResolveRequest(server string, params *SeedsResolveParams) (*http.Re
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/seeds/resolve")
+	operationPath := fmt.Sprintf("/v1/seeds/server-resolve")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -490,30 +483,6 @@ func NewSeedsResolveRequest(server string, params *SeedsResolveParams) (*http.Re
 
 		}
 
-		if params.Session != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "session", *params.Session, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Key != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "key", *params.Key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -523,21 +492,6 @@ func NewSeedsResolveRequest(server string, params *SeedsResolveParams) (*http.Re
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
-	}
-
-	if params != nil {
-
-		if params.Origin != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Origin", *params.Origin, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("Origin", headerParam0)
-		}
-
 	}
 
 	return req, nil
@@ -589,7 +543,7 @@ type ClientWithResponsesInterface interface {
 
 	// IngestServerEventsWithBodyWithResponse Ingest server-side request events
 	//
-	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -598,21 +552,21 @@ type ClientWithResponsesInterface interface {
 
 	// IngestServerEventsWithResponse Ingest server-side request events
 	//
-	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+	// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /v1/ingest/server-events (the `IngestServerEvents` operationId).
 	IngestServerEventsWithResponse(ctx context.Context, params *IngestServerEventsParams, body IngestServerEventsJSONRequestBody, reqEditors ...RequestEditorFn) (*IngestServerEventsResponse, error)
 
-	// SeedsResolveWithResponse Resolve the seed to mount for a session
+	// SeedsServerResolveWithResponse Resolve the seed to render server-side (Fetcher Seeds)
 	//
-	// Called by kalathos.js, and by the server SDKs for Fetcher Seeds, with the publishable key; origin-checked. Serves the published Harvest Seed for the goal and archetype, with a variant that is sticky per session (or set by the session's experiment arm). Returns 204 when there is nothing to mount: no goal reached yet, nothing published for it, or the session is in a running experiment's holdout arm. 402 `plan_required` with feature `seeds_publish` on the Free plan (seeds are preview only); without `session` (Fetcher Seeds) 402 with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused.
+	// Called by the server SDKs (Fetcher Seeds) with a secret key holding `seeds:read`; never from a browser. Serves the same published Harvest Seed kalathos.js would mount for the goal and archetype, chosen by page only, so the variant is the same for every visitor of the page. Returns 204 when there is nothing to render. 402 `plan_required` with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused. A field-bound key may only resolve its own field.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with GET /v1/seeds/resolve (the `SeedsResolve` operationId).
-	SeedsResolveWithResponse(ctx context.Context, params *SeedsResolveParams, reqEditors ...RequestEditorFn) (*SeedsResolveResponse, error)
+	// Corresponds with GET /v1/seeds/server-resolve (the `SeedsServerResolve` operationId).
+	SeedsServerResolveWithResponse(ctx context.Context, params *SeedsServerResolveParams, reqEditors ...RequestEditorFn) (*SeedsServerResolveResponse, error)
 }
 
 type IngestServerEventsResponse struct {
@@ -705,13 +659,13 @@ func (r IngestServerEventsResponse) ContentType() string {
 	return ""
 }
 
-// SeedsResolveResponse200Headers the declared response headers of an HTTP 200 response for SeedsResolve
-type SeedsResolveResponse200Headers struct {
+// SeedsServerResolveResponse200Headers the declared response headers of an HTTP 200 response for SeedsServerResolve
+type SeedsServerResolveResponse200Headers struct {
 	CacheControl *string
 	Vary         *string
 }
 
-type SeedsResolveResponse struct {
+type SeedsServerResolveResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
@@ -731,56 +685,56 @@ type SeedsResolveResponse struct {
 	// JSON503 the response for an HTTP 503 `application/json` response
 	JSON503 *APIError
 	// Headers200 the parsed response headers for an HTTP 200 response
-	Headers200 *SeedsResolveResponse200Headers
+	Headers200 *SeedsServerResolveResponse200Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r SeedsResolveResponse) GetJSON200() *ResolvedSeed {
+func (r SeedsServerResolveResponse) GetJSON200() *ResolvedSeed {
 	return r.JSON200
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r SeedsResolveResponse) GetJSON401() *APIError {
+func (r SeedsServerResolveResponse) GetJSON401() *APIError {
 	return r.JSON401
 }
 
 // GetJSON402 returns the response for an HTTP 402 `application/json` response
-func (r SeedsResolveResponse) GetJSON402() *APIError {
+func (r SeedsServerResolveResponse) GetJSON402() *APIError {
 	return r.JSON402
 }
 
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
-func (r SeedsResolveResponse) GetJSON403() *APIError {
+func (r SeedsServerResolveResponse) GetJSON403() *APIError {
 	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r SeedsResolveResponse) GetJSON404() *APIError {
+func (r SeedsServerResolveResponse) GetJSON404() *APIError {
 	return r.JSON404
 }
 
 // GetJSON422 returns the response for an HTTP 422 `application/json` response
-func (r SeedsResolveResponse) GetJSON422() *APIError {
+func (r SeedsServerResolveResponse) GetJSON422() *APIError {
 	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r SeedsResolveResponse) GetJSON500() *APIError {
+func (r SeedsServerResolveResponse) GetJSON500() *APIError {
 	return r.JSON500
 }
 
 // GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r SeedsResolveResponse) GetJSON503() *APIError {
+func (r SeedsServerResolveResponse) GetJSON503() *APIError {
 	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
-func (r SeedsResolveResponse) GetBody() []byte {
+func (r SeedsServerResolveResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r SeedsResolveResponse) Status() string {
+func (r SeedsServerResolveResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -788,7 +742,7 @@ func (r SeedsResolveResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r SeedsResolveResponse) StatusCode() int {
+func (r SeedsServerResolveResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -796,7 +750,7 @@ func (r SeedsResolveResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r SeedsResolveResponse) ContentType() string {
+func (r SeedsServerResolveResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -805,7 +759,7 @@ func (r SeedsResolveResponse) ContentType() string {
 
 // IngestServerEventsWithBodyWithResponse Ingest server-side request events
 //
-// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -820,7 +774,7 @@ func (c *ClientWithResponses) IngestServerEventsWithBodyWithResponse(ctx context
 
 // IngestServerEventsWithResponse Ingest server-side request events
 //
-// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.
+// Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \0 field_id \0 ip \0 user_agent \0 floor(ts/1800000) \0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -833,19 +787,19 @@ func (c *ClientWithResponses) IngestServerEventsWithResponse(ctx context.Context
 	return ParseIngestServerEventsResponse(rsp)
 }
 
-// SeedsResolveWithResponse Resolve the seed to mount for a session
+// SeedsServerResolveWithResponse Resolve the seed to render server-side (Fetcher Seeds)
 //
-// Called by kalathos.js, and by the server SDKs for Fetcher Seeds, with the publishable key; origin-checked. Serves the published Harvest Seed for the goal and archetype, with a variant that is sticky per session (or set by the session's experiment arm). Returns 204 when there is nothing to mount: no goal reached yet, nothing published for it, or the session is in a running experiment's holdout arm. 402 `plan_required` with feature `seeds_publish` on the Free plan (seeds are preview only); without `session` (Fetcher Seeds) 402 with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused.
+// Called by the server SDKs (Fetcher Seeds) with a secret key holding `seeds:read`; never from a browser. Serves the same published Harvest Seed kalathos.js would mount for the goal and archetype, chosen by page only, so the variant is the same for every visitor of the page. Returns 204 when there is nothing to render. 402 `plan_required` with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused. A field-bound key may only resolve its own field.
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with GET /v1/seeds/resolve (the `SeedsResolve` operationId).
-func (c *ClientWithResponses) SeedsResolveWithResponse(ctx context.Context, params *SeedsResolveParams, reqEditors ...RequestEditorFn) (*SeedsResolveResponse, error) {
-	rsp, err := c.SeedsResolve(ctx, params, reqEditors...)
+// Corresponds with GET /v1/seeds/server-resolve (the `SeedsServerResolve` operationId).
+func (c *ClientWithResponses) SeedsServerResolveWithResponse(ctx context.Context, params *SeedsServerResolveParams, reqEditors ...RequestEditorFn) (*SeedsServerResolveResponse, error) {
+	rsp, err := c.SeedsServerResolve(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSeedsResolveResponse(rsp)
+	return ParseSeedsServerResolveResponse(rsp)
 }
 
 // ParseIngestServerEventsResponse parses an HTTP response from a IngestServerEventsWithResponse call
@@ -923,15 +877,15 @@ func ParseIngestServerEventsResponse(rsp *http.Response) (*IngestServerEventsRes
 	return response, nil
 }
 
-// ParseSeedsResolveResponse parses an HTTP response from a SeedsResolveWithResponse call
-func ParseSeedsResolveResponse(rsp *http.Response) (*SeedsResolveResponse, error) {
+// ParseSeedsServerResolveResponse parses an HTTP response from a SeedsServerResolveWithResponse call
+func ParseSeedsServerResolveResponse(rsp *http.Response) (*SeedsServerResolveResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &SeedsResolveResponse{
+	response := &SeedsServerResolveResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -997,7 +951,7 @@ func ParseSeedsResolveResponse(rsp *http.Response) (*SeedsResolveResponse, error
 
 	switch {
 	case rsp.StatusCode == 200:
-		var headers SeedsResolveResponse200Headers
+		var headers SeedsServerResolveResponse200Headers
 		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {

@@ -80,12 +80,12 @@
             "type": "integer"
           },
           "dropped": {
-            "description": "Events of the batch that were not accepted because they are invalid and cannot be normalized, or (server events) belong to a field a downgrade paused; the rest of the batch is accepted. Omitted when none.",
+            "description": "Events of the batch that were not accepted because they are invalid and cannot be normalized, or (server events) belong to a field a downgrade paused or arrive once a Free org's sessions for the period are used up; the rest of the batch is accepted. Omitted when none.",
             "format": "int64",
             "type": "integer"
           },
           "quota": {
-            "description": "Live-mode keys: the org's plan quota state. Informational; events are always accepted.",
+            "description": "Live-mode keys: the org's plan quota state. exceeded on the Free plan means its hard cap is reached and new events are not recorded.",
             "enum": [
               "ok",
               "warning",
@@ -280,7 +280,7 @@
   "paths": {
     "/v1/ingest/server-events": {
       "post": {
-        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too.",
+        "description": "Sent by the edge/server middleware SDKs with a secret key holding `ingest:write`. Each event's `field_id` must belong to the key's org (and equal the key's field for field-bound keys). `request.ip` is taken as the visitor's address. Without `session_hint` the session id is `ses_srv_` + lower(base32(sha256(org_id \\0 field_id \\0 ip \\0 user_agent \\0 floor(ts/1800000) \\0)[:15])). Per-key and per-IP limits apply (429 with Retry-After); event ids seen within the dedupe window are dropped from `accepted`. A goal id or name is normalized (control characters removed, cut to 64 characters); an event whose goal cannot be accepted (no id or name, a value out of range, an invalid currency) is left out and counted in `dropped`, and the rest of the batch is accepted. Events of a field a downgrade paused (its `plan_paused_at` is set) are counted in `dropped` too, and so are a live-mode key's events once a Free org's sessions for the period reach its hard cap (the included amount plus a 10% grace allowance; `quota` is `exceeded`): nothing of them is recorded until the period ends or a paid plan is chosen.",
         "operationId": "ingest-server-events",
         "parameters": [
           {
@@ -396,10 +396,10 @@
         ]
       }
     },
-    "/v1/seeds/resolve": {
+    "/v1/seeds/server-resolve": {
       "get": {
-        "description": "Called by kalathos.js, and by the server SDKs for Fetcher Seeds, with the publishable key; origin-checked. Serves the published Harvest Seed for the goal and archetype, with a variant that is sticky per session (or set by the session's experiment arm). Returns 204 when there is nothing to mount: no goal reached yet, nothing published for it, or the session is in a running experiment's holdout arm. 402 `plan_required` with feature `seeds_publish` on the Free plan (seeds are preview only); without `session` (Fetcher Seeds) 402 with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused.",
-        "operationId": "seeds-resolve",
+        "description": "Called by the server SDKs (Fetcher Seeds) with a secret key holding `seeds:read`; never from a browser. Serves the same published Harvest Seed kalathos.js would mount for the goal and archetype, chosen by page only, so the variant is the same for every visitor of the page. Returns 204 when there is nothing to render. 402 `plan_required` with feature `fetcher_seeds` below Scale; with limit `fields` for a field a downgrade paused. A field-bound key may only resolve its own field.",
+        "operationId": "seeds-server-resolve",
         "parameters": [
           {
             "explode": false,
@@ -412,23 +412,23 @@
             }
           },
           {
-            "description": "Goal id the page passed to kalathos.goal(...). Matches seeds published for that id and for the field's goals it names (by id, event or server matcher, or name).",
+            "description": "Goal id of the page being rendered; matched like the goal of GET /v1/seeds/resolve.",
             "explode": false,
             "in": "query",
             "name": "goal",
             "schema": {
-              "description": "Goal id the page passed to kalathos.goal(...). Matches seeds published for that id and for the field's goals it names (by id, event or server matcher, or name).",
+              "description": "Goal id of the page being rendered; matched like the goal of GET /v1/seeds/resolve.",
               "maxLength": 64,
               "type": "string"
             }
           },
           {
-            "description": "Path of the page. Seeds of the field's URL-matcher goals that match it are resolved too, so a goal reached by URL mounts its seed without a kalathos.goal call.",
+            "description": "Path of the page being rendered; seeds of the field's URL-matcher goals that match it are resolved too.",
             "explode": false,
             "in": "query",
             "name": "path",
             "schema": {
-              "description": "Path of the page. Seeds of the field's URL-matcher goals that match it are resolved too, so a goal reached by URL mounts its seed without a kalathos.goal call.",
+              "description": "Path of the page being rendered; seeds of the field's URL-matcher goals that match it are resolved too.",
               "maxLength": 2048,
               "type": "string"
             }
@@ -439,36 +439,6 @@
             "name": "archetype",
             "schema": {
               "maxLength": 64,
-              "type": "string"
-            }
-          },
-          {
-            "explode": false,
-            "in": "query",
-            "name": "session",
-            "schema": {
-              "maxLength": 64,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Publishable key (kl_pk_…).",
-            "explode": false,
-            "in": "query",
-            "name": "key",
-            "schema": {
-              "description": "Publishable key (kl_pk_…).",
-              "maxLength": 128,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Sent by the browser; must be one of the key's allowed origins.",
-            "in": "header",
-            "name": "Origin",
-            "schema": {
-              "description": "Sent by the browser; must be one of the key's allowed origins.",
-              "maxLength": 2048,
               "type": "string"
             }
           }
@@ -567,7 +537,12 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Resolve the seed to mount for a session",
+        "security": [
+          {
+            "secretKey": []
+          }
+        ],
+        "summary": "Resolve the seed to render server-side (Fetcher Seeds)",
         "tags": [
           "Seeds"
         ]
